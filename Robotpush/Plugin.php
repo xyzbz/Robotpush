@@ -56,11 +56,11 @@ class Robotpush_Plugin implements Typecho_Plugin_Interface
         $form->addInput($wecomWebhookUrl);
 
         // 添加登录消息模板输入框
-        $loginMessageTemplate = new Typecho_Widget_Helper_Form_Element_Textarea('loginMessageTemplate', NULL, "管理员登录成功：\n用户名：{username}\nIP地址：{ip}\n时间：{time}", _t('登录消息模板'), _t('支持以下变量：{username}（登录用户名）、{ip}（登录IP地址）、{time}（登录时间）'));
+        $loginMessageTemplate = new Typecho_Widget_Helper_Form_Element_Textarea('loginMessageTemplate', NULL, "管理员登录成功：\n用户名：{username}\nIP地址：{ip}\n地理位置：{geo}\n时间：{time}", _t('登录消息模板'), _t('支持以下变量：{username}（登录用户名）、{ip}（登录IP地址）、{geo}（地理位置）、{time}（登录时间）'));
         $form->addInput($loginMessageTemplate);
 
         // 添加评论消息模板输入框
-        $commentMessageTemplate = new Typecho_Widget_Helper_Form_Element_Textarea('commentMessageTemplate', NULL, "有新评论：\n评论人：{author}\n评论内容：{text}\n文章标题：{title}\n文章链接：{permalink}\nIP地址：{ip}\n时间：{time}", _t('评论消息模板'), _t('支持以下变量：{author}（评论人）、{text}（评论内容）、{title}（文章标题）、{permalink}（文章链接）、{ip}（评论IP地址）、{time}（评论时间）'));
+        $commentMessageTemplate = new Typecho_Widget_Helper_Form_Element_Textarea('commentMessageTemplate', NULL, "有新评论：\n评论人：{author}\n评论内容：{text}\n文章标题：{title}\n文章链接：{permalink}\nIP地址：{ip}\n地理位置：{geo}\n时间：{time}", _t('评论消息模板'), _t('支持以下变量：{author}（评论人）、{text}（评论内容）、{title}（文章标题）、{permalink}（文章链接）、{ip}（评论IP地址）、{geo}（地理位置）、{time}（评论时间）'));
         $form->addInput($commentMessageTemplate);
 
         // 添加是否显示完整评论内容的选项
@@ -77,6 +77,38 @@ class Robotpush_Plugin implements Typecho_Plugin_Interface
     public static function personalConfig(Typecho_Widget_Helper_Form $form)
     {
         // 无需个人配置
+    }
+
+    /**
+     * 获取IP地理位置信息
+     */
+    private static function getIpGeoInfo($ip)
+    {
+        if (empty($ip)) {
+            return '未知';
+        }
+
+        try {
+            $url = "https://v2.xxapi.cn/api/ip?ip={$ip}";
+            $ch = curl_init();
+            curl_setopt($ch, CURLOPT_URL, $url);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 5); // 5秒超时
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+
+            if ($httpCode === 200) {
+                $data = json_decode($response, true);
+                if (isset($data['data']['address'])) {
+                    return $data['data']['address'];
+                }
+            }
+        } catch (Exception $e) {
+            // 忽略异常
+        }
+
+        return "地理位置查询超时";
     }
 
     /**
@@ -97,11 +129,14 @@ class Robotpush_Plugin implements Typecho_Plugin_Interface
 
         // 获取登录IP地址
         $ip = $request->getIp();
+        
+        // 获取IP地理位置
+        $geo = self::getIpGeoInfo($ip);
 
         // 替换模板中的变量
         $message = str_replace(
-            array('{username}', '{ip}', '{time}'),
-            array($user->name, $ip, date('Y-m-d H:i:s')),
+            array('{username}', '{ip}', '{geo}', '{time}'),
+            array($user->name, $ip, $geo, date('Y-m-d H:i:s')),
             $loginMessageTemplate
         );
 
@@ -128,6 +163,9 @@ class Robotpush_Plugin implements Typecho_Plugin_Interface
 
         // 获取评论IP地址
         $ip = $request->getIp();
+        
+        // 获取IP地理位置
+        $geo = self::getIpGeoInfo($ip);
 
         // 获取评论相关信息
         $author = $comment['author']; // 评论人
@@ -151,8 +189,8 @@ class Robotpush_Plugin implements Typecho_Plugin_Interface
 
         // 替换模板中的变量
         $message = str_replace(
-            array('{author}', '{text}', '{title}', '{permalink}', '{ip}', '{time}'),
-            array($author, $text, $title, $permalink, $ip, date('Y-m-d H:i:s')),
+            array('{author}', '{text}', '{title}', '{permalink}', '{ip}', '{geo}', '{time}'),
+            array($author, $text, $title, $permalink, $ip, $geo, date('Y-m-d H:i:s')),
             $commentMessageTemplate
         );
 
